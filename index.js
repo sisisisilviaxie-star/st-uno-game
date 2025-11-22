@@ -1,174 +1,269 @@
 // 插件配置
 const EXTENSION_NAME = "st_uno_game";
-const VERSION = "1.0.0";
 
 (async function() {
-    // --- 1. 热重载清理 (关键步骤！) ---
-    // 如果页面上已经有了我们的按钮（说明是更新或重复加载），先删掉旧的
-    // 这样就能实现“更新后立即生效”而不用刷新页面
+    // --- 0. 清理旧环境 ---
     $('#uno-launch-btn').remove();
     $('#uno-main-view').remove();
-    $('style[id="uno-css"]').remove(); // 清理旧 CSS
+    $('style[id="uno-css"]').remove();
 
-    console.log(`🚀 [UNO] 插件 v${VERSION} 正在热加载...`);
+    console.log("🚀 [UNO] 游戏引擎 v5.0 启动...");
 
-    // --- 2. 等待环境就绪 ---
-    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-    let attempts = 0;
-    while ((!window.SillyTavern || !window.jQuery) && attempts < 30) {
-        await delay(200);
-        attempts++;
+    // --- 1. 游戏逻辑核心 (Model) ---
+    // 这部分负责纯数学逻辑，不涉及界面
+    class UnoEngine {
+        constructor() {
+            this.deck = [];       // 牌堆
+            this.handPlayer = []; // 玩家手牌
+            this.handAI = [];     // AI手牌
+            this.topCard = null;  // 场上最上面的牌
+            this.turn = 'player'; // 当前回合: 'player' 或 'ai'
+            this.colors = ['red', 'yellow', 'blue', 'green'];
+        }
+
+        // 初始化一局游戏
+        startNewGame() {
+            this.deck = this.createDeck();
+            this.handPlayer = this.drawCards(7);
+            this.handAI = this.drawCards(7);
+            this.topCard = this.drawCards(1)[0];
+            this.turn = 'player';
+            console.log("🃏 新游戏开始，牌堆生成完毕");
+        }
+
+        // 生成牌堆 (简化版：只有数字牌)
+        createDeck() {
+            let deck = [];
+            this.colors.forEach(color => {
+                for (let i = 0; i <= 9; i++) {
+                    deck.push({ color: color, value: i, type: 'number' });
+                }
+            });
+            // 洗牌算法
+            return deck.sort(() => Math.random() - 0.5);
+        }
+
+        // 抽牌
+        drawCards(count) {
+            let drawn = [];
+            for(let i=0; i<count; i++) {
+                if(this.deck.length > 0) drawn.push(this.deck.pop());
+            }
+            return drawn;
+        }
+
+        // AI 思考出牌 (简单的 AI 逻辑)
+        aiThink() {
+            // 寻找能出的牌
+            const matchIndex = this.handAI.findIndex(card => 
+                card.color === this.topCard.color || card.value === this.topCard.value
+            );
+
+            if (matchIndex !== -1) {
+                // 找到牌了，出牌
+                const card = this.handAI.splice(matchIndex, 1)[0];
+                this.topCard = card;
+                this.turn = 'player';
+                return { action: 'play', card: card };
+            } else {
+                // 没牌，抽一张
+                const drawn = this.drawCards(1);
+                if(drawn.length > 0) this.handAI.push(drawn[0]);
+                this.turn = 'player';
+                return { action: 'draw', card: null };
+            }
+        }
     }
-    if (!window.jQuery) return;
+
+    // 实例化游戏引擎
+    const Game = new UnoEngine();
+
+    // --- 2. 等待环境 ---
+    const delay = (ms) => new Promise(r => setTimeout(r, ms));
+    while ((!window.SillyTavern || !window.jQuery)) await delay(500);
     const $ = window.jQuery;
 
-    // --- 3. 注入 CSS (带 ID 方便清理) ---
+    // --- 3. 界面样式 (CSS) ---
     const cssStyles = `
-        /* 启动悬浮球 */
         #uno-launch-btn {
             position: fixed; top: 60px; right: 20px; z-index: 20000;
-            width: 45px; height: 45px;
-            background: rgba(0,0,0,0.8); color: gold;
-            border: 2px solid rgba(255,255,255,0.3); border-radius: 50%;
+            width: 45px; height: 45px; background: rgba(0,0,0,0.8); color: gold;
+            border: 2px solid gold; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; font-size: 24px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            transition: transform 0.2s, background 0.2s;
-            backdrop-filter: blur(2px);
+            cursor: pointer; font-size: 24px; backdrop-filter: blur(2px);
         }
-        #uno-launch-btn:active { transform: scale(0.9); }
-        #uno-launch-btn:hover { background: black; border-color: gold; }
-        
-        /* 主界面 */
         #uno-main-view {
-            position: fixed; 
-            top: 120px; left: 20px; right: 20px;
-            width: auto; max-width: 400px; margin: 0 auto;
-            height: auto; max-height: 70vh;
-            
-            background: rgba(30, 35, 45, 0.98); 
-            border: 1px solid #555; border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.9);
-            z-index: 29999; 
-            display: none; overflow: hidden;
-            display: flex; flex-direction: column;
-            animation: uno-fade-in 0.2s ease-out;
+            position: fixed; top: 120px; left: 20px; right: 20px;
+            max-width: 400px; margin: 0 auto;
+            background: #222; border: 2px solid #444; border-radius: 16px;
+            z-index: 29999; display: none; flex-direction: column;
+            box-shadow: 0 10px 50px black; overflow: hidden;
         }
-        @keyframes uno-fade-in { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); }}
-
-        /* 标题栏 */
-        .uno-header {
-            padding: 15px; background: #222;
-            border-bottom: 1px solid #444;
-            display: flex; justify-content: space-between; align-items: center;
-            cursor: move; touch-action: none; /* 关键：防触摸冲突 */
+        .uno-header { padding: 10px; background: #333; display: flex; justify-content: space-between; }
+        .uno-table { 
+            padding: 20px; min-height: 200px; 
+            background: radial-gradient(circle, #3a5a40, #1a2a1e); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative;
         }
-        .uno-title { font-weight: bold; color: #eee; letter-spacing: 1px; }
         
-        /* 关闭按钮 */
-        .uno-close {
-            width: 30px; height: 30px; background: #333;
-            border-radius: 50%; text-align: center; line-height: 30px;
-            cursor: pointer; color: #ff5555; font-weight: bold;
+        /* 卡牌样式 */
+        .uno-card {
+            width: 60px; height: 90px; background: white; 
+            border-radius: 5px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 24px; border: 2px solid white;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            cursor: pointer; transition: transform 0.2s;
         }
-
-        /* 内容滚动区 */
-        .uno-scroll-area {
-            flex: 1; overflow-y: auto; padding: 20px;
-            text-align: center;
+        .uno-card:active { transform: scale(0.9); }
+        
+        /* 颜色变体 */
+        .card-red { background: #ff5555; color: white; }
+        .card-blue { background: #5555ff; color: white; }
+        .card-green { background: #55aa55; color: white; }
+        .card-yellow { background: #ffaa00; color: black; }
+        
+        /* 区域 */
+        .ai-area { position: absolute; top: 10px; display: flex; gap: 5px; }
+        .ai-card-back { 
+            width: 40px; height: 60px; background: #333; border: 1px solid #666; border-radius: 4px; 
         }
-
-        /* 按钮组 */
-        .uno-btn {
-            width: 100%; padding: 12px; margin-top: 10px;
-            background: linear-gradient(45deg, #2a9d8f, #264653);
-            border: none; border-radius: 8px;
-            color: white; font-weight: bold; font-size: 16px;
-            box-shadow: 0 4px 0 #1a3a4a;
+        .player-area { 
+            position: absolute; bottom: 10px; 
+            display: flex; gap: 5px; overflow-x: auto; max-width: 100%; padding: 5px;
         }
-        .uno-btn:active { transform: translateY(4px); box-shadow: none; }
+        .center-pile { transform: scale(1.2); }
+        
+        .uno-btn { padding: 10px; margin: 10px; width: 90%; background: #4CAF50; border:none; color:white; font-weight:bold; border-radius:5px;}
     `;
     $('head').append(`<style id="uno-css">${cssStyles}</style>`);
 
-    // --- 4. 注入 HTML ---
+    // --- 4. 界面结构 (HTML) ---
     $('body').append(`
-        <div id="uno-launch-btn" title="UNO">🎲</div>
-        
+        <div id="uno-launch-btn">🎲</div>
         <div id="uno-main-view">
             <div class="uno-header" id="uno-drag-handle">
-                <span class="uno-title">UNO 对战</span>
-                <div class="uno-close">✕</div>
+                <span style="color:gold; font-weight:bold;">UNO 竞技场</span>
+                <div class="uno-close" style="cursor:pointer;">✕</div>
             </div>
             
-            <div class="uno-scroll-area">
-                <div style="font-size: 40px; margin-bottom: 10px;">🎴</div>
-                <h3 id="uno-player-display" style="color: gold; margin: 5px 0;">...</h3>
-                <p style="color: #888; font-size: 12px; margin-bottom: 20px;">VS AI</p>
+            <div class="uno-table">
+                <!-- AI 手牌区 (显示背面) -->
+                <div class="ai-area" id="ai-hand-view"></div>
                 
-                <div id="uno-msg-box" style="background:#222; padding:10px; border-radius:8px; font-size:13px; color:#aaa; min-height:40px;">
-                    等待开始...
+                <!-- 弃牌堆 (中间) -->
+                <div class="center-pile">
+                    <div class="uno-card card-red" id="top-card-view">?</div>
                 </div>
-
-                <button class="uno-btn" id="uno-start-btn">发牌</button>
-                <button class="uno-btn" id="uno-reload-btn" style="background:#444; box-shadow:0 4px 0 #222; margin-top:8px;">刷新插件</button>
+                
+                <!-- 玩家手牌区 -->
+                <div class="player-area" id="player-hand-view"></div>
             </div>
+
+            <div id="game-log" style="padding:5px; text-align:center; color:#aaa; font-size:12px;">等待开始...</div>
+            <button class="uno-btn" id="btn-start">发牌开局</button>
         </div>
     `);
 
-    // --- 5. 拖拽功能 (复用之前的完美逻辑) ---
-    const makeDraggable = (el, handle) => {
-        let isDragging = false, startX, startY, initialLeft, initialTop;
-        const start = (e) => {
-            const evt = e.type === 'touchstart' ? e.touches[0] : e;
-            isDragging = true; startX = evt.clientX; startY = evt.clientY;
-            const rect = el.getBoundingClientRect();
-            initialLeft = rect.left; initialTop = rect.top;
-        };
-        const move = (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            const evt = e.type === 'touchmove' ? e.touches[0] : e;
-            const dx = evt.clientX - startX, dy = evt.clientY - startY;
-            el.style.left = `${initialLeft + dx}px`; el.style.top = `${initialTop + dy}px`;
-            el.style.margin = 0; /* 清除居中 */
-        };
-        const end = () => isDragging = false;
-        handle.addEventListener('mousedown', start); handle.addEventListener('touchstart', start);
-        document.addEventListener('mousemove', move); document.addEventListener('touchmove', move, {passive:false});
-        document.addEventListener('mouseup', end); document.addEventListener('touchend', end);
-    };
-    makeDraggable(document.getElementById('uno-main-view'), document.getElementById('uno-drag-handle'));
-
-    // --- 6. 交互逻辑 ---
+    // --- 5. 控制器逻辑 (Controller) ---
     
-    // 打开
-    $(document).on('click', '#uno-launch-btn', function() {
-        const ST = window.SillyTavern;
-        // 尝试获取角色名
-        let name = "玩家";
-        if (ST && ST.getContext) {
-            const ctx = ST.getContext();
-            if (ctx.characterId) name = ctx.characters[ctx.characterId].name;
+    // 渲染界面
+    function renderUI() {
+        // 渲染 AI 手牌 (只显示背面数量)
+        $('#ai-hand-view').empty();
+        Game.handAI.forEach(() => {
+            $('#ai-hand-view').append(`<div class="ai-card-back"></div>`);
+        });
+
+        // 渲染中间牌
+        const top = Game.topCard;
+        $('#top-card-view')
+            .text(top.value)
+            .removeClass().addClass(`uno-card card-${top.color}`);
+
+        // 渲染玩家手牌
+        $('#player-hand-view').empty();
+        Game.handPlayer.forEach((card, index) => {
+            const el = $(`<div class="uno-card card-${card.color}">${card.value}</div>`);
+            // 绑定出牌点击事件
+            el.on('click', () => handlePlayerMove(index));
+            $('#player-hand-view').append(el);
+        });
+    }
+
+    // 玩家出牌逻辑
+    async function handlePlayerMove(index) {
+        if (Game.turn !== 'player') return;
+
+        const card = Game.handPlayer[index];
+        // 简单规则检查：同色或同数字
+        if (card.color !== Game.topCard.color && card.value !== Game.topCard.value) {
+            if(window.toastr) toastr.warning("这张牌出不去！颜色或数字不匹配。");
+            return;
         }
-        $('#uno-player-display').text(name);
-        $('#uno-main-view').css('display', 'flex').hide().fadeIn(200);
+
+        // 执行出牌
+        Game.handPlayer.splice(index, 1);
+        Game.topCard = card;
+        Game.turn = 'ai';
+        renderUI();
+        $('#game-log').text(`你打出了 ${card.color} ${card.value}`);
+
+        // --- 关键：触发 AI 回合 (流式交互) ---
+        await triggerAITurn();
+    }
+
+    // AI 回合逻辑 (流式交互核心)
+    async function triggerAITurn() {
+        $('#game-log').text("AI 正在思考...");
+        
+        // 1. AI 纯逻辑思考
+        await delay(1000); // 假装思考一会
+        const move = Game.aiThink();
+        
+        renderUI(); // 先更新界面 (动作)
+
+        // 2. 构造 Prompt (话术)
+        let systemPrompt = "";
+        if (move.action === 'play') {
+            $('#game-log').text(`AI 打出了 ${move.card.color} ${move.card.value}`);
+            systemPrompt = `(系统提示: 轮到你了。你打出了一张【${move.card.color} ${move.card.value}】。请简短地回应这一步操作。)`;
+        } else {
+            $('#game-log').text(`AI 摸了一张牌`);
+            systemPrompt = `(系统提示: 轮到你了。你手里没有能出的牌，只好摸了一张。请表现得有点懊恼。)`;
+        }
+
+        // 3. 触发酒馆 AI 发言 (通过 Slash Command 设置输入框并发送)
+        // 这是一个模拟操作，实际应用中我们会调用 SillyTavern.generate()
+        if (window.SillyTavern && window.SillyTavern.eventSource) {
+            // 暂时只弹窗提示，下一步我们接 LLM
+            if(window.toastr) toastr.info(`AI 想要说: ${systemPrompt}`);
+            
+            // TODO: 这里将写入真正的 LLM 调用代码
+            // await SillyTavern.generateInput(systemPrompt); 
+        }
+    }
+
+    // --- 6. 绑定基础事件 ---
+    $(document).on('click', '#uno-launch-btn', () => $('#uno-main-view').fadeIn());
+    $(document).on('click', '.uno-close', () => $('#uno-main-view').fadeOut());
+    
+    $(document).on('click', '#btn-start', () => {
+        Game.startNewGame();
+        renderUI();
+        $('#btn-start').hide(); // 隐藏开始按钮
+        if(window.toastr) toastr.success("游戏开始！轮到你了");
     });
 
-    // 关闭
-    $(document).on('click', '.uno-close', function() {
-        $('#uno-main-view').fadeOut(200);
-    });
+    // 简单的拖拽支持
+    const handle = document.getElementById('uno-drag-handle');
+    const el = document.getElementById('uno-main-view');
+    if(handle && el) {
+        let isD = false, sx, sy, ix, iy;
+        handle.addEventListener('touchstart', e => { isD=true; sx=e.touches[0].clientX; sy=e.touches[0].clientY; ix=el.offsetLeft; iy=el.offsetTop; });
+        handle.addEventListener('touchmove', e => { if(isD) { e.preventDefault(); el.style.left=(ix+e.touches[0].clientX-sx)+'px'; el.style.top=(iy+e.touches[0].clientY-sy)+'px'; } }, {passive:false});
+        handle.addEventListener('touchend', () => isD=false);
+    }
 
-    // 测试游戏
-    $(document).on('click', '#uno-start-btn', function() {
-        $('#uno-msg-box').text("正在洗牌... (Native模式正常)");
-        if(window.toastr) toastr.success("UNO 引擎连接成功");
-    });
-
-    // 强制刷新页面按钮 (留着以防万一)
-    $(document).on('click', '#uno-reload-btn', function() {
-        location.reload();
-    });
-
-    console.log("✅ [UNO] 插件加载完毕 (已启用热重载)");
+    console.log("✅ [UNO] 逻辑引擎加载完毕");
 })();
