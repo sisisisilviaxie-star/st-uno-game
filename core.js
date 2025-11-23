@@ -1,35 +1,38 @@
 (function(ST, $) {
-    console.log("🚀 UNO v17.0 (Web Component) 启动");
+    console.log("🧨 UNO v18.0 (暴力注入版) 启动");
 
-    const TRIGGER_KEYWORD = "【yellows game】";
-    const SAVE_KEY = "st_uno_save_data_v17";
+    const TRIGGER = "【yellows game】";
+    const SAVE_KEY = "st_uno_data_v18";
+    
+    // --- 1. 头像获取 (简单粗暴) ---
+    function getUserAvatar() {
+        const ctx = ST.getContext();
+        if(!ctx) return 'img/user-default.png';
+        let av = ctx.userAvatar;
+        // 强制补全路径，参考了参考代码的逻辑
+        return av ? (av.indexOf('/') > -1 ? av : `/User Avatars/${av}`) : 'img/user-default.png';
+    }
+    
+    function getCharAvatar() {
+        const ctx = ST.getContext();
+        if(!ctx || !ctx.characterId) return '';
+        let av = ctx.characters[ctx.characterId].avatar;
+        return av ? (av.indexOf('/') > -1 ? av : `/characters/${av}`) : '';
+    }
 
-    // --- 1. 定义自定义元素 <uno-game> ---
-    class UnoGameElement extends HTMLElement {
-        constructor() {
-            super();
-            this.attachShadow({ mode: 'open' }); // Shadow DOM 隔离样式
-            this.state = { deck: [], pHand: [], aHand: [], top: null, turn: 'player' };
-        }
-
-        connectedCallback() {
-            this.loadState();
-            if (!this.state.top) this.initGame();
-            this.render();
-        }
-
-        // --- 核心逻辑 ---
-        initGame() {
-            const colors = ['red', 'blue', 'green', 'yellow'];
+    // --- 2. 游戏引擎 (纯逻辑，不含任何 UI) ---
+    const Engine = {
+        state: { deck:[], pHand:[], aHand:[], top:null, turn:'player' },
+        
+        init() {
+            const colors = ['red','blue','green','yellow'];
             const types = ['0','1','2','3','4','5','6','7','8','9','skip','draw2'];
             let deck = [];
             colors.forEach(c => types.forEach(t => {
-                let n = (t==='0')?1:2; 
+                let n = (t==='0')?1:2;
                 for(let i=0;i<n;i++) deck.push({col:c, val:t, type:(isNaN(t)?t:'num')});
             }));
-            deck.sort(()=>Math.random()-0.5);
-            
-            this.state.deck = deck;
+            this.state.deck = deck.sort(()=>Math.random()-0.5);
             this.state.pHand = this.draw(7);
             this.state.aHand = this.draw(7);
             this.state.top = this.draw(1)[0];
@@ -38,215 +41,191 @@
                 this.state.top = this.draw(1)[0];
             }
             this.state.turn = 'player';
-            this.saveState();
-        }
+            this.save();
+        },
 
         draw(n) {
             let d = [];
-            for(let i=0; i<n; i++) {
-                if(this.state.deck.length===0) this.initGame(); // 简单重置
+            for(let i=0;i<n;i++) {
+                if(this.state.deck.length===0) this.init(); 
                 d.push(this.state.deck.pop());
             }
             return d;
-        }
+        },
 
-        canPlay(c) { return c.col === this.state.top.col || c.val === this.state.top.val; }
+        canPlay(c) { 
+            return c.col === this.state.top.col || c.val === this.state.top.val; 
+        },
 
-        // --- 渲染 ---
-        render() {
-            const s = this.state;
-            // 获取头像
-            const charAvatar = this.getAvatar('char');
-            const userAvatar = this.getAvatar('user');
-            
-            // 生成手牌 HTML
-            const handHtml = s.pHand.map((c, i) => {
-                let val = c.val;
-                if(val==='skip') val='🚫'; if(val==='draw2') val='+2';
-                const disabled = s.turn !== 'player' || !this.canPlay(c);
-                return `<div class="card c-${c.col} ${disabled?'disabled':''}" onclick="this.getRootNode().host.playCard(${i})">${val}</div>`;
-            }).join('');
-
-            // 中间牌
-            let topVal = s.top.val;
-            if(topVal==='skip') topVal='🚫'; if(topVal==='draw2') topVal='+2';
-
-            this.shadowRoot.innerHTML = `
-            <style>
-                :host { display: block; width: 100%; height: 450px; font-family: sans-serif; user-select: none; }
-                .board { 
-                    height: 100%; background: #2c3e50; border-radius: 12px; 
-                    display: flex; flex-direction: column; padding: 10px; box-sizing: border-box;
-                    border: 2px solid #444; position: relative;
-                }
-                .header { display:flex; justify-content:space-between; color:#f1c40f; font-weight:bold; padding-bottom:5px; border-bottom:1px solid #555; }
-                .table { flex:1; background: radial-gradient(#2ecc71, #27ae60); border-radius:8px; margin:5px 0; position:relative; }
-                
-                .zone { display:flex; align-items:center; padding:10px; gap:10px; }
-                .zone.ai { color: #fff; }
-                .zone.player { flex-direction: row-reverse; position:absolute; bottom:0; right:0; width:100%; }
-                
-                .avatar { width:50px; height:50px; border-radius:50%; border:2px solid #fff; object-fit:cover; background:#333; }
-                .bubble { background:#fff; color:#000; padding:5px 10px; border-radius:10px; font-size:12px; max-width:120px; }
-                
-                .center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); display:flex; gap:20px; }
-                .card { 
-                    width:45px; height:65px; background:#fff; border-radius:4px; 
-                    display:flex; align-items:center; justify-content:center; 
-                    font-weight:bold; font-size:18px; cursor:pointer; box-shadow:2px 2px 5px rgba(0,0,0,0.3);
-                }
-                .c-red { background:#e74c3c; color:#fff; }
-                .c-blue { background:#3498db; color:#fff; }
-                .c-green { background:#2ecc71; color:#fff; }
-                .c-yellow { background:#f1c40f; color:#000; }
-                .c-back { background:#34495e; border:2px solid #fff; color:transparent; }
-                
-                .hand { display:flex; gap:5px; overflow-x:auto; padding:5px; position:absolute; bottom:60px; left:10px; right:10px; }
-                .card.disabled { opacity:0.5; pointer-events:none; }
-                .card:hover { transform:translateY(-5px); }
-
-                #mask { position:absolute; inset:0; background:rgba(0,0,0,0.5); color:white; display:${s.turn==='ai'?'flex':'none'}; justify-content:center; align-items:center; z-index:10; border-radius:8px; }
-            </style>
-
-            <div class="board">
-                <div id="mask">AI 思考中...</div>
-                <div class="header">
-                    <span>UNO</span>
-                    <span style="font-size:12px; cursor:pointer" onclick="this.getRootNode().host.resetGame()">重置</span>
-                </div>
-                
-                <div class="table">
-                    <div class="zone ai">
-                        <img src="${charAvatar}" class="avatar">
-                        <div class="bubble" id="ai-msg">${s.aiMsg || "..."}</div>
-                        <span style="font-size:12px; margin-left:auto">AI: ${s.aHand.length}</span>
-                    </div>
-
-                    <div class="center">
-                        <div class="card c-${s.top.col}">${topVal}</div>
-                        <div class="card c-back" onclick="this.getRootNode().host.drawCard()">UNO</div>
-                    </div>
-
-                    <div class="zone player">
-                        <img src="${userAvatar}" class="avatar">
-                        <div class="bubble" id="user-msg">${s.userMsg || "..."}</div>
-                    </div>
-
-                    <div class="hand">
-                        ${handHtml}
-                    </div>
-                </div>
-            </div>
-            `;
-        }
-
-        // --- 交互 ---
-        async playCard(idx) {
-            const c = this.state.pHand[idx];
-            this.state.pHand.splice(idx, 1);
-            this.state.top = c;
-            this.state.userMsg = `出 ${c.col} ${c.val}`;
-            
-            if(c.type === 'draw2') { this.state.aHand.push(...this.draw(2)); this.state.aiMsg = "(被+2)"; }
-            if(c.type === 'skip') { 
-                this.state.aiMsg = "(跳过)"; 
-                this.render(); this.saveState(); return; 
-            }
-
-            this.state.turn = 'ai';
-            this.render();
-            this.saveState();
-            await this.aiMove();
-        }
-
-        async drawCard() {
-            if(this.state.turn !== 'player') return;
-            const c = this.draw(1)[0];
-            this.state.pHand.push(c);
-            this.state.userMsg = "摸牌";
-            
-            if(this.canPlay(c)) {
-                if(window.toastr) toastr.info("摸到的牌能出！");
-            } else {
-                this.state.turn = 'ai';
-                await new Promise(r=>setTimeout(r,500));
-                await this.aiMove();
-            }
-            this.render();
-            this.saveState();
-        }
-
-        async aiMove() {
-            // 模拟 AI 思考 (这里可以接入 LLM)
-            await new Promise(r=>setTimeout(r, 1000));
-            
-            const valid = this.state.aHand.filter(c => this.canPlay(c));
-            if(valid.length > 0) {
-                const c = valid[Math.floor(Math.random()*valid.length)];
-                const idx = this.state.aHand.indexOf(c);
-                this.state.aHand.splice(idx, 1);
-                this.state.top = c;
-                this.state.aiMsg = `出 ${c.val}`;
-                
-                if(c.type === 'draw2') this.state.pHand.push(...this.draw(2));
-                if(c.type === 'skip') {
-                    this.render(); this.saveState();
-                    await new Promise(r=>setTimeout(r, 1000));
-                    await this.aiMove(); // 连动
-                    return;
-                }
-            } else {
-                this.state.aHand.push(...this.draw(1));
-                this.state.aiMsg = "摸牌...";
-            }
-            
-            this.state.turn = 'player';
-            this.render();
-            this.saveState();
-        }
-
-        resetGame() {
-            if(confirm("重开？")) {
-                this.state.top = null; // 触发重新 init
-                this.connectedCallback();
-            }
-        }
-
-        // --- 状态管理 ---
-        saveState() {
-            localStorage.setItem(SAVE_KEY, JSON.stringify(this.state));
-        }
-        loadState() {
+        save() { localStorage.setItem(SAVE_KEY, JSON.stringify(this.state)); },
+        
+        load() {
             try {
                 const d = JSON.parse(localStorage.getItem(SAVE_KEY));
-                if(d && d.deck) this.state = d;
+                if(d && d.deck) { this.state = d; return true; }
             } catch(e){}
+            return false;
         }
+    };
 
-        getAvatar(type) {
-            const ctx = ST.getContext();
-            if(!ctx) return "";
-            if(type==='user') return ctx.userAvatar ? `/User Avatars/${ctx.userAvatar}` : '';
-            if(type==='char') return ctx.characterId ? `/characters/${ctx.characters[ctx.characterId].avatar}` : '';
-            return "";
-        }
+    // --- 3. 渲染器 (直接生成 HTML 字符串) ---
+    function renderGameHTML() {
+        const s = Engine.state;
+        
+        // 生成手牌 HTML
+        let handHTML = '';
+        s.pHand.forEach((c, i) => {
+            let val = c.val;
+            if(val==='skip') val='🚫'; if(val==='draw2') val='+2';
+            // 关键：直接把 onclick 写成 data 属性，让 jQuery 代理
+            const playable = s.turn==='player' && Engine.canPlay(c);
+            const cls = `uno-card c-${c.col} ${playable?'playable':'disabled'}`;
+            handHTML += `<div class="${cls}" data-action="play" data-index="${i}">${val}</div>`;
+        });
+
+        let topVal = s.top.val;
+        if(topVal==='skip') topVal='🚫'; if(topVal==='draw2') topVal='+2';
+
+        // 这里的 HTML 结构模仿了手机模拟器，直接撑满容器
+        return `
+        <div class="uno-board">
+            <div class="uno-top-bar">
+                <span>UNO 对战</span>
+                <div class="uno-btn-small" data-action="reset">↺</div>
+            </div>
+            
+            <div class="uno-field">
+                <!-- AI 区域 -->
+                <div class="uno-row ai-row">
+                    <img src="${getCharAvatar()}" class="uno-avatar">
+                    <div class="uno-bubble ai-bubble">${s.aiMsg || "..."}</div>
+                    <span style="color:white; font-size:12px; margin-left:auto">AI: ${s.aHand.length}</span>
+                </div>
+
+                <!-- 中间区域 -->
+                <div class="uno-center">
+                    <div class="uno-card c-${s.top.col}" style="transform:scale(1.2)">${topVal}</div>
+                    <div class="uno-card c-back" data-action="draw">UNO</div>
+                </div>
+
+                <!-- 玩家区域 -->
+                <div class="uno-row player-row">
+                    <div class="uno-bubble user-bubble">${s.userMsg || "..."}</div>
+                    <img src="${getUserAvatar()}" class="uno-avatar">
+                </div>
+                
+                <!-- 手牌区域 -->
+                <div class="uno-hand">
+                    ${handHTML}
+                </div>
+            </div>
+        </div>
+        `;
     }
 
-    // 注册组件
-    if(!customElements.get('uno-game')) {
-        customElements.define('uno-game', UnoGameElement);
-    }
-
-    // --- 2. 扫描器 (Scanner) ---
-    function scan() {
+    // --- 4. 注入与绑定 (核心黑科技) ---
+    // 模仿参考代码：找到目标容器，暴力替换 innerHTML
+    function inject() {
+        // 遍历所有消息气泡
         $('.mes_text').each(function() {
-            if($(this).text().includes(TRIGGER_KEYWORD) && $(this).find('uno-game').length === 0) {
-                $(this).html('<uno-game></uno-game>'); // 直接替换文本为组件
+            const $msg = $(this);
+            // 只有当文本包含关键词，且还没被替换过时
+            if ($msg.text().includes(TRIGGER) && $msg.find('.uno-board').length === 0) {
+                console.log("⚡ 发现触发词，注入游戏界面...");
+                
+                // 1. 尝试读档，没有则初始化
+                if (!Engine.load()) Engine.init();
+                
+                // 2. 替换 HTML
+                $msg.html(renderGameHTML());
+                
+                // 3. 强力绑定事件 (使用 jQuery delegate，防止 DOM 变动失效)
+                // 先解绑旧的，防止重复触发
+                $msg.off('click');
+                
+                // 绑定出牌
+                $msg.on('click', '[data-action="play"]', async function() {
+                    const idx = $(this).data('index');
+                    await handlePlay(idx, $msg);
+                });
+
+                // 绑定摸牌
+                $msg.on('click', '[data-action="draw"]', async function() {
+                    await handleDraw($msg);
+                });
+
+                // 绑定重置
+                $msg.on('click', '[data-action="reset"]', function() {
+                    if(confirm("重开?")) { Engine.init(); refresh($msg); }
+                });
             }
         });
     }
 
-    // 启动扫描
-    setInterval(scan, 1000); // 每秒检查一次，最稳妥
+    // --- 5. 交互逻辑 ---
+    function refresh($container) {
+        Engine.save();
+        $container.html(renderGameHTML());
+        // 事件绑定依然有效，因为是绑定在 $msg 上的 delegate
+    }
+
+    async function handlePlay(idx, $container) {
+        const c = Engine.state.pHand[idx];
+        Engine.state.pHand.splice(idx, 1);
+        Engine.state.top = c;
+        Engine.state.userMsg = `出 ${c.val}`;
+        
+        if(c.type === 'draw2') { Engine.state.aHand.push(...Engine.draw(2)); Engine.state.aiMsg = "(+2)"; }
+        if(c.type === 'skip') { Engine.state.aiMsg = "(跳过)"; refresh($container); return; }
+
+        Engine.state.turn = 'ai';
+        refresh($container);
+        await aiMove($container);
+    }
+
+    async function handleDraw($container) {
+        if(Engine.state.turn !== 'player') return;
+        const c = Engine.draw(1)[0];
+        Engine.state.pHand.push(c);
+        Engine.state.userMsg = "摸牌";
+        
+        if(Engine.canPlay(c)) {
+            if(window.toastr) toastr.info("能出！");
+        } else {
+            Engine.state.turn = 'ai';
+            refresh($container);
+            await new Promise(r=>setTimeout(r, 800));
+            await aiMove($container);
+        }
+        refresh($container);
+    }
+
+    async function aiMove($container) {
+        // 简单 AI，暂不接 LLM，确保逻辑先跑通
+        await new Promise(r=>setTimeout(r, 1000));
+        const valid = Engine.state.aHand.filter(c => Engine.canPlay(c));
+        
+        if(valid.length > 0) {
+            const c = valid[Math.floor(Math.random()*valid.length)];
+            const idx = Engine.state.aHand.indexOf(c);
+            Engine.state.aHand.splice(idx, 1);
+            Engine.state.top = c;
+            Engine.state.aiMsg = `出 ${c.val}`;
+            if(c.type==='draw2') Engine.state.pHand.push(...Engine.draw(2));
+            if(c.type==='skip') { refresh($container); await new Promise(r=>setTimeout(r,1000)); await aiMove($container); return; }
+        } else {
+            Engine.state.aHand.push(...Engine.draw(1));
+            Engine.state.aiMsg = "摸牌";
+        }
+        Engine.state.turn = 'player';
+        refresh($container);
+    }
+
+    // --- 6. 循环扫描 (参考代码的核心机制) ---
+    // 每 500ms 扫描一次页面，看有没有新的关键词出现
+    setInterval(inject, 500);
     
+    // 立即执行一次
+    setTimeout(inject, 1000);
+
 })(window.SillyTavern, window.jQuery);
