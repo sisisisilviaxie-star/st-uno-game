@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>同层游戏中心</title>
+    <style>
+        /* --- 沉浸式暗黑样式 --- */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            user-select: none; /* 防止玩游戏时选中文本 */
+        }
+
+        .game-console {
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* 占满 iframe */
+            box-sizing: border-box;
+            padding: 15px;
+            background: linear-gradient(180deg, #222 0%, #1a1a1a 100%);
+        }
+
+        /* 顶部栏 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        .header h3 { margin: 0; font-size: 16px; color: #fff; }
+        .player-tag { 
+            font-size: 12px; 
+            background: #333; 
+            padding: 2px 8px; 
+            border-radius: 4px; 
+            color: #4ecdc4; 
+        }
+
+        /* 游戏记录显示区 (屏幕) */
+        #screen-display {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap; /* 保留换行 */
+            border: 1px solid #333;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        /* 不同的消息颜色 */
+        .log-p { color: #4ecdc4; } /* 玩家 */
+        .log-ai { color: #ff9f43; } /* AI */
+        .log-sys { color: #a55eea; } /* 系统 */
+
+        /* 操作区 */
+        .controls {
+            flex-shrink: 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        button:active { transform: scale(0.96); }
+        button:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+        /* 滚动条美化 */
+        #screen-display::-webkit-scrollbar { width: 4px; }
+        #screen-display::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <div class="game-console">
+        <div class="header">
+            <h3>🎲 互动桌游</h3>
+            <span class="player-tag" id="player-name">玩家</span>
+        </div>
+
+        <!-- 所有的游戏历史都在这里显示 -->
+        <div id="screen-display"></div>
+
+        <div class="controls">
+            <button id="dice-btn">🎲 掷骰子</button>
+            <!-- 预留扩展按钮 -->
+            <!-- <button id="rps-btn" style="background:#444">✌️ 猜拳(未开发)</button> -->
+        </div>
+    </div>
+
+    <script>
+        // 全局历史记录变量
+        let gameHistory = "";
+        // 玩家名字
+        let myName = "玩家";
+
+        $(document).ready(function() {
+            // ------------------------------------------------
+            // 1. 初始化
+            // ------------------------------------------------
+            // 获取名字
+            if (typeof ST_UserName !== 'undefined') myName = ST_UserName;
+            $('#player-name').text(myName);
+
+            // 恢复数据 (ST_InitialData 来自正则捕获)
+            const $screen = $('#screen-display');
+            if (typeof ST_InitialData !== 'undefined' && ST_InitialData.trim() !== "") {
+                gameHistory = ST_InitialData;
+                renderHistory();
+            } else {
+                appendLog("系统", "游戏开始，请点击按钮...", "log-sys");
+                saveData(); // 初始化保存一次
+            }
+
+            // ------------------------------------------------
+            // 2. 玩家点击事件
+            // ------------------------------------------------
+            $('#dice-btn').click(async function() {
+                const $btn = $(this);
+                $btn.prop('disabled', true); // 暂时禁用防连点
+
+                // --- 游戏逻辑 ---
+                const point = Math.floor(Math.random() * 6) + 1;
+                const text = `掷出了 ${point} 点`;
+
+                // --- 更新 UI ---
+                appendLog(myName, text, "log-p");
+                
+                // --- 保存并触发 AI ---
+                await saveData();
+                triggerAI(point);
+
+                // 1秒后恢复按钮
+                setTimeout(() => $btn.prop('disabled', false), 1000);
+            });
+        });
+
+        // ------------------------------------------------
+        // 3. 处理 AI 回复 (供外部正则脚本调用)
+        // ------------------------------------------------
+        // 这个函数会被酒馆正则脚本里的 onAIGenerated 调用
+        window.handleAIResponse = async function(aiText) {
+            console.log("收到 AI 回复:", aiText);
+            
+            // 清理一下 AI 回复可能带有的多余空格或引号
+            let cleanText = aiText.trim();
+            // 如果 AI 回复太长，可能需要截断，或者直接显示
+            
+            // 更新 UI
+            // 假设 ST_CharName 已注入，如果没注入就叫 "对方"
+            const aiName = (typeof ST_CharName !== 'undefined') ? ST_CharName : "对方";
+            appendLog(aiName, cleanText, "log-ai");
+            
+            // 保存回楼层
+            await saveData();
+        };
+
+        // ------------------------------------------------
+        // 辅助函数
+        // ------------------------------------------------
+
+        // 追加日志并渲染
+        function appendLog(name, text, cssClass) {
+            // 构造新的日志行
+            // 格式：[名字] 内容
+            const newEntry = `<span class="${cssClass}">[${name}]</span> ${text}`;
+            
+            // 如果历史记录不为空，加个换行
+            if (gameHistory) gameHistory += "\n";
+            gameHistory += newEntry;
+
+            renderHistory();
+        }
+
+        // 渲染 HTML 到屏幕并滚动到底部
+        function renderHistory() {
+            const $screen = $('#screen-display');
+            // 将换行符转为 <br> (虽然 CSS 设置了 pre-wrap，但为了保险可以用 html 渲染)
+            // 这里我们直接把 gameHistory 视为 HTML 片段的集合（因为里面含 span）
+            // 注意：gameHistory 里现在存的是带有 HTML 标签的字符串
+            
+            // 为了避免重复叠加 HTML 标签导致结构混乱，建议 gameHistory 只存纯文本？
+            // 不，为了颜色好看，我们存 HTML 字符串是可行的，只要确保格式正确。
+            $screen.html(gameHistory.replace(/\n/g, "<br>"));
+            
+            // 滚动到底部
+            $screen.scrollTop($screen[0].scrollHeight);
+        }
+
+        // 保存到当前楼层
+        async function saveData() {
+            if (window.saveToCurrentLayer) {
+                // 将当前的 gameHistory (包含 HTML 标签) 存回去
+                // 这样下次加载时，格式和颜色都能保留
+                await window.saveToCurrentLayer(gameHistory);
+            }
+        }
+
+        // 触发 AI
+        function triggerAI(userPoint) {
+            if (window.triggerSlash) {
+                // 构建提示词
+                // 告诉 AI 刚才发生了什么，并强制它简短回复
+                const prompt = `/quiet [系统指令: 这是一个掷骰子游戏。用户(${myName})掷出了 ${userPoint} 点。请你以{{char}}的身份也掷一个骰子，或者对用户的点数进行简短的评价/嘲讽/赞美。请直接输出内容，不要使用Markdown或标签。] | /trigger`;
+                window.triggerSlash(prompt);
+            }
+        }
+    </script>
+</body>
+</html>
