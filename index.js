@@ -2,13 +2,13 @@ const EXTENSION_NAME = "st_uno_game";
 
 (async function() {
     try {
-        // --- 1. 清理环境 ---
+        // --- 1. 清理环境 (含旧样式) ---
         const ids = ['uno-launch-btn', 'uno-main-view', 'uno-css'];
         ids.forEach(id => { const el = document.getElementById(id); if(el) el.remove(); });
 
-        console.log("🚀 [UNO] v9.0 修复版启动...");
+        console.log("🚀 [UNO] v10.0 样式隔离版启动...");
 
-        // --- 2. CSS 修复 (重点修复头像和布局) ---
+        // --- 2. CSS (所有类名加前缀，杜绝污染) ---
         const cssStyles = `
             /* 启动按钮 */
             #uno-launch-btn {
@@ -41,42 +41,41 @@ const EXTENSION_NAME = "st_uno_game";
                 overflow-y: auto;
             }
 
-            /* --- 修复1: 头像容器 (防止变形) --- */
-            .avatar-wrapper {
-                width: 60px; height: 60px; flex-shrink: 0; /* 禁止压缩 */
+            /* --- 隔离修复: 头像容器 --- */
+            .uno-avatar-wrapper {
+                width: 60px; height: 60px; flex-shrink: 0; 
                 border-radius: 50%; border: 2px solid white; 
                 overflow: hidden; background: #555;
                 box-shadow: 0 4px 8px rgba(0,0,0,0.3);
             }
-            .avatar { 
+            .uno-avatar { 
                 width: 100%; height: 100%; 
-                object-fit: cover; /* 关键：保持比例填充 */
-                display: block;
+                object-fit: cover; display: block;
             }
 
             /* 布局区域 */
-            .char-zone { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-            .user-zone { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 10px; flex-direction: row; }
+            .uno-char-zone { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+            .uno-user-zone { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 10px; flex-direction: row; }
 
-            /* 气泡 */
-            .bubble {
+            /* 气泡 (隔离) */
+            .uno-bubble {
                 background: white; color: #333; padding: 8px 12px; border-radius: 12px;
                 font-size: 13px; max-width: 180px; position: relative;
                 opacity: 0; transition: opacity 0.3s;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             }
-            .bubble-ai { border-top-left-radius: 0; }
-            .bubble-user { border-bottom-right-radius: 0; background: #dcf8c6; }
-            .bubble.show { opacity: 1; }
+            .uno-bubble-ai { border-top-left-radius: 0; }
+            .uno-bubble-user { border-bottom-right-radius: 0; background: #dcf8c6; }
+            .uno-bubble.show { opacity: 1; }
 
             /* 中间牌堆 */
-            .center-area { 
+            .uno-center-area { 
                 display: flex; gap: 20px; justify-content: center; align-items: center; 
                 margin: 10px 0;
             }
 
-            /* 卡牌 */
-            .card {
+            /* 卡牌 (隔离) */
+            .uno-card-item {
                 width: 50px; height: 75px; background: white; border-radius: 6px;
                 display: flex; align-items: center; justify-content: center;
                 font-weight: 900; font-size: 20px; border: 2px solid #eee;
@@ -91,19 +90,24 @@ const EXTENSION_NAME = "st_uno_game";
             .c-back { background: #34495e; border: 2px solid white; color: transparent; }
 
             /* 玩家手牌 */
-            .my-hand { 
+            .uno-my-hand { 
                 display: flex; gap: 5px; overflow-x: auto; 
                 padding: 10px 5px; height: 95px; align-items: center;
                 background: rgba(0,0,0,0.1); border-radius: 8px;
             }
 
-            /* 遮罩层 (AI 思考时显示) */
+            /* 输入栏 */
+            .uno-input-bar { padding: 8px; background: #333; display: flex; gap: 5px; flex-shrink:0;}
+            .uno-input-bar input { flex: 1; padding: 8px; border-radius: 20px; border:none; font-size: 14px; }
+            .uno-input-bar button { padding: 8px 15px; background: #2980b9; color: white; border:none; border-radius: 20px; white-space: nowrap; }
+
+            /* 遮罩层 */
             #ai-thinking-mask {
                 position: absolute; top: 0; left: 0; right: 0; bottom: 0;
                 background: rgba(0,0,0,0.4); z-index: 10;
                 display: none; justify-content: center; align-items: center;
                 color: white; font-weight: bold; font-size: 1.2em;
-                pointer-events: auto; /* 拦截点击 */
+                pointer-events: auto; 
             }
         `;
         const styleEl = document.createElement('style');
@@ -118,11 +122,10 @@ const EXTENSION_NAME = "st_uno_game";
         if (!window.jQuery) return;
         const $ = window.jQuery;
 
-        // --- 4. 注入 HTML ---
+        // --- 4. 注入 HTML (类名已更新) ---
         $('body').append(`
             <div id="uno-launch-btn" title="UNO">🎲</div>
             <div id="uno-main-view">
-                <!-- AI 思考遮罩 -->
                 <div id="ai-thinking-mask">AI 思考中...</div>
 
                 <div class="uno-header" id="uno-drag-handle">
@@ -133,11 +136,11 @@ const EXTENSION_NAME = "st_uno_game";
                 
                 <div class="uno-table">
                     <!-- 上方：角色 -->
-                    <div class="char-zone">
-                        <div class="avatar-wrapper">
-                            <img id="ai-avatar" class="avatar" src="">
+                    <div class="uno-char-zone">
+                        <div class="uno-avatar-wrapper">
+                            <img id="ai-avatar" class="uno-avatar" src="">
                         </div>
-                        <div class="bubble bubble-ai" id="ai-bubble">...</div>
+                        <div class="uno-bubble uno-bubble-ai" id="ai-bubble">...</div>
                     </div>
                     
                     <div style="text-align:right; color:#ddd; font-size:12px;">
@@ -145,28 +148,31 @@ const EXTENSION_NAME = "st_uno_game";
                     </div>
 
                     <!-- 中间：牌桌 -->
-                    <div class="center-area">
-                        <div class="card c-red" id="table-card">Start</div>
-                        <!-- 摸牌堆 -->
-                        <div class="card c-back" id="draw-deck" title="摸牌">UNO</div>
+                    <div class="uno-center-area">
+                        <div class="uno-card-item c-red" id="table-card">Start</div>
+                        <div class="uno-card-item c-back" id="draw-deck" title="摸牌">UNO</div>
                     </div>
 
                     <!-- 下方：玩家 -->
                     <div>
-                        <div class="user-zone">
-                            <div class="bubble bubble-user" id="user-bubble">...</div>
-                            <div class="avatar-wrapper">
-                                <img id="user-avatar" class="avatar" src="">
+                        <div class="uno-user-zone">
+                            <div class="uno-bubble uno-bubble-user" id="user-bubble">...</div>
+                            <div class="uno-avatar-wrapper">
+                                <img id="user-avatar" class="uno-avatar" src="">
                             </div>
                         </div>
-                        <!-- 玩家手牌 -->
-                        <div class="my-hand" id="player-hand-area"></div>
+                        <div class="uno-my-hand" id="player-hand-area"></div>
                     </div>
+                </div>
+                
+                <div class="uno-input-bar">
+                    <input type="text" id="uno-chat-input" placeholder="发送消息...">
+                    <button id="uno-send-btn">发送</button>
                 </div>
             </div>
         `);
 
-        // --- 5. 游戏引擎 (Model) ---
+        // --- 5. 游戏引擎 ---
         class UnoEngine {
             constructor() {
                 this.deck = []; this.handPlayer = []; this.handAI = [];
@@ -179,7 +185,6 @@ const EXTENSION_NAME = "st_uno_game";
                 this.handPlayer = this.drawCards(7);
                 this.handAI = this.drawCards(7);
                 this.topCard = this.drawCards(1)[0];
-                // 确保开局不是功能牌
                 while(isNaN(this.topCard.value)) {
                     this.deck.push(this.topCard);
                     this.topCard = this.drawCards(1)[0];
@@ -210,14 +215,13 @@ const EXTENSION_NAME = "st_uno_game";
         }
         const Game = new UnoEngine();
 
-        // --- 6. LLM 桥接 (核心修复：确保发送) ---
+        // --- 6. LLM 桥接 ---
         const LLMBridge = {
             async askAIDecision(gameState, validMoves) {
                 const ST = window.SillyTavern;
                 const context = ST.getContext();
                 const charName = context.characters[context.characterId]?.name || "AI";
                 
-                // 构建 Prompt
                 const handStr = gameState.handAI.map((c, i) => `[${i}: ${c.color} ${c.value}]`).join(', ');
                 const topCardStr = `[${gameState.topCard.color} ${gameState.topCard.value}]`;
                 
@@ -236,29 +240,19 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
 ### FORMAT (JSON Only)
 { "action": "play" | "draw", "index": <number>, "speech": "..." }
 `;
-                console.log("[UNO] 发送 Prompt:", prompt);
-
+                console.log("[UNO] Prompt:", prompt);
                 try {
                     if (ST.generateQuietPrompt) {
-                        // 调用 LLM
                         const response = await ST.generateQuietPrompt(prompt, true, false);
-                        console.log("[UNO] LLM 返回:", response);
-                        
-                        // 解析
                         const jsonMatch = response.match(/\{[\s\S]*\}/);
                         if (jsonMatch) return JSON.parse(jsonMatch[0]);
-                    } else {
-                        if(window.toastr) toastr.error("错误：酒馆版本过低，不支持 generateQuietPrompt");
                     }
-                } catch (e) {
-                    console.error("[UNO] LLM 调用失败:", e);
-                    if(window.toastr) toastr.error("LLM 连接失败，转为本地逻辑");
-                }
+                } catch (e) { console.error(e); }
                 return null;
             }
         };
 
-        // --- 7. UI 控制器 ---
+        // --- 7. UI 控制器 (类名已更新) ---
         function setThinking(thinking) {
             if (thinking) {
                 $('#ai-thinking-mask').css('display', 'flex');
@@ -275,10 +269,9 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
             if(top.type==='reverse') disp='⇄';
             if(top.type==='draw2') disp='+2';
 
-            $('#table-card').removeClass().addClass(`card c-${top.color}`).text(disp);
+            $('#table-card').removeClass().addClass(`uno-card-item c-${top.color}`).text(disp);
             $('#ai-card-count').text(Game.handAI.length);
 
-            // 玩家手牌渲染
             $('#player-hand-area').empty();
             Game.handPlayer.forEach((card, index) => {
                 let v = card.value;
@@ -286,14 +279,13 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
                 if(card.type==='draw2') v='+2';
                 if(card.type==='reverse') v='⇄';
                 
-                const el = $(`<div class="card c-${card.color}">${v}</div>`);
+                const el = $(`<div class="uno-card-item c-${card.color}">${v}</div>`);
                 
-                // 样式：能不能出？
                 if (Game.turn === 'player' && Game.isValidMove(card, Game.topCard)) {
                     el.css('border', '2px solid gold').css('transform', 'translateY(-5px)');
                     el.on('click', () => handlePlayerCard(index));
                 } else {
-                    el.css('opacity', '0.6'); // 不能出的牌变暗
+                    el.css('opacity', '0.6'); 
                 }
                 
                 $('#player-hand-area').append(el);
@@ -306,80 +298,62 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
             setTimeout(() => $(id).removeClass('show'), 5000);
         }
 
-        // 玩家出牌
         async function handlePlayerCard(index) {
             if (Game.turn !== 'player') return;
-            
             const card = Game.handPlayer[index];
-            // 双重检查
             if (!Game.isValidMove(card, Game.topCard)) return;
 
-            // 执行出牌
             Game.handPlayer.splice(index, 1);
             Game.topCard = card;
             renderUI();
 
-            // 触发功能
             if(card.type === 'draw2') {
                 Game.handAI.push(...Game.drawCards(2));
                 showBubble('ai', "(AI 被+2)");
             }
             if(card.type === 'skip' || card.type === 'reverse') {
                 showBubble('ai', "(AI 被跳过)");
-                // 还是玩家回合
                 Game.turn = 'player';
                 renderUI();
                 return;
             }
 
-            // 切换到 AI
             Game.turn = 'ai';
-            renderUI(); // 更新 UI 禁用玩家操作
+            renderUI(); 
             await aiMove();
         }
 
-        // 玩家摸牌 (修复无限摸牌 BUG)
         $('#draw-deck').on('click', async () => {
             if (Game.turn !== 'player') return;
-
-            // 1. 摸牌
             const drawn = Game.drawCards(1)[0];
             Game.handPlayer.push(drawn);
             showBubble('user', `摸到了 ${drawn.color} ${drawn.value}`);
             
-            // 2. 判断能否打出
             if (Game.isValidMove(drawn, Game.topCard)) {
-                // 如果能出，给个机会出牌（UI会刷新，那张牌会亮起）
                 renderUI();
                 if(window.toastr) toastr.info("摸到的牌可以出！");
             } else {
-                // 不能出，强制结束回合
                 renderUI();
                 if(window.toastr) toastr.warning("摸到的牌不能出，回合结束");
-                await new Promise(r => setTimeout(r, 1000)); // 稍微停顿
+                await new Promise(r => setTimeout(r, 1000));
                 Game.turn = 'ai';
                 renderUI();
                 await aiMove();
             }
         });
 
-        // AI 回合
         async function aiMove() {
-            setThinking(true); // 开启遮罩，玩家无法操作
-
+            setThinking(true);
             const validMoves = Game.handAI.filter(c => Game.isValidMove(c, Game.topCard));
-            
-            // --- 发送给 LLM ---
             let decision = await LLMBridge.askAIDecision({
                 handAI: Game.handAI, topCard: Game.topCard
             }, validMoves);
             
-            setThinking(false); // 关闭遮罩
+            setThinking(false);
 
             let cardToPlay = null;
             let speech = "";
 
-            // 解析决策
             if (decision && decision.action === 'play' && decision.index !== undefined) {
                 const c = Game.handAI[decision.index];
                 if (c && Game.isValidMove(c, Game.topCard)) {
@@ -388,13 +362,11 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
                 }
             }
 
-            // 兜底 AI (如果 LLM 没给有效回复)
             if (!cardToPlay && validMoves.length > 0) {
                 cardToPlay = validMoves[Math.floor(Math.random() * validMoves.length)];
-                speech = decision ? decision.speech : "我的回合！";
+                speech = decision ? decision.speech : "出牌！";
             }
 
-            // 执行 AI 动作
             if (cardToPlay) {
                 showBubble('ai', speech || "出牌");
                 const idx = Game.handAI.indexOf(cardToPlay);
@@ -404,20 +376,24 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
                 if(cardToPlay.type === 'draw2') Game.handPlayer.push(...Game.drawCards(2));
                 if(cardToPlay.type === 'skip' || cardToPlay.type === 'reverse') {
                     renderUI();
-                    await aiMove(); // 连动
+                    await aiMove(); 
                     return;
                 }
             } else {
-                // AI 摸牌
                 Game.handAI.push(...Game.drawCards(1));
-                showBubble('ai', decision?.speech || "没牌了，摸一张");
+                showBubble('ai', decision?.speech || "摸牌...");
             }
 
             Game.turn = 'player';
             renderUI();
         }
 
-        // --- 8. 启动 ---
+        // --- 8. 启动与绑定 ---
+        $('#uno-send-btn').on('click', () => {
+            const txt = $('#uno-chat-input').val();
+            if(txt) { showBubble('user', txt); $('#uno-chat-input').val(''); }
+        });
+
         const launchBtn = document.getElementById('uno-launch-btn');
         launchBtn.onclick = () => {
             const ctx = window.SillyTavern.getContext();
@@ -435,7 +411,6 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
 
         $('.uno-close').on('click', () => $('#uno-main-view').fadeOut());
 
-        // 拖拽
         const h = document.getElementById('uno-drag-handle');
         const v = document.getElementById('uno-main-view');
         let d=false,x,y,ix,iy;
@@ -443,7 +418,7 @@ ${validMoves.length === 0 ? "- You MUST Draw a card." : ""}
         h.addEventListener('touchmove',e=>{if(d){e.preventDefault();v.style.left=(ix+e.touches[0].clientX-x)+'px';v.style.top=(iy+e.touches[0].clientY-y)+'px';v.style.margin=0}},{passive:false});
         h.addEventListener('touchend',()=>d=false);
 
-        console.log("✅ [UNO] v9.0 修复版就绪");
+        console.log("✅ [UNO] v10.0 样式隔离版就绪");
 
     } catch (err) {
         console.error(err);
